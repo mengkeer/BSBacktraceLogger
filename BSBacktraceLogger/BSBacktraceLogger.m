@@ -65,6 +65,19 @@
 #define BS_NLIST struct nlist
 #endif
 
+/*
+* Pointer authentication codes (on arm64e for example) must be stripped out.
+* See https://developer.apple.com/documentation/security/preparing_your_app_to_work_with_pointer_authentication
+*/
+
+#define ARM64_PTR_MASK 0x0000000FFFFFFFFF
+
+#if (defined(__arm__) || defined(__arm64__)) && defined(__LP64__)
+#define BS_NORMALISE_INSTRUCTION_POINTER(A) ((A) & ARM64_PTR_MASK)
+#else
+#define BS_NORMALISE_INSTRUCTION_POINTER(A) (A)
+#endif
+
 typedef struct BSStackFrameEntry{
     const struct BSStackFrameEntry *const previous;
     const uintptr_t return_address;
@@ -120,12 +133,12 @@ NSString *_bs_backtraceOfThread(thread_t thread) {
     }
     
     const uintptr_t instructionAddress = bs_mach_instructionAddress(&machineContext);
-    backtraceBuffer[i] = instructionAddress;
+    backtraceBuffer[i] = BS_NORMALISE_INSTRUCTION_POINTER(instructionAddress);
     ++i;
     
     uintptr_t linkRegister = bs_mach_linkRegister(&machineContext);
     if (linkRegister) {
-        backtraceBuffer[i] = linkRegister;
+        backtraceBuffer[i] = BS_NORMALISE_INSTRUCTION_POINTER(linkRegister);
         i++;
     }
     
@@ -141,7 +154,7 @@ NSString *_bs_backtraceOfThread(thread_t thread) {
     }
     
     for(; i < 50; i++) {
-        backtraceBuffer[i] = frame.return_address;
+        backtraceBuffer[i] = BS_NORMALISE_INSTRUCTION_POINTER(frame.return_address);
         if(backtraceBuffer[i] == 0 ||
            frame.previous == 0 ||
            bs_mach_copyMem(frame.previous, &frame, sizeof(frame)) != KERN_SUCCESS) {
